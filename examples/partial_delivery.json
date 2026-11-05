@@ -1,0 +1,47 @@
+{
+  "invoice": {
+    "invoice_number": "INV-1042",
+    "supplier_name": "Torino Components",
+    "purchase_order_number": "PO-778",
+    "lines": [
+      {
+        "line_id": "inv-1",
+        "item_code": "BRG-42",
+        "description": "Bearing 42mm",
+        "quantity": "100",
+        "unit": "each",
+        "unit_price": "12.50"
+      }
+    ]
+  },
+  "purchase_order": {
+    "order_number": "PO-778",
+    "supplier_name": "Torino Components",
+    "lines": [
+      {
+        "line_id": "po-1",
+        "item_code": "BRG-42",
+        "description": "Bearing, 42 mm",
+        "quantity": "100",
+        "unit": "each",
+        "unit_price": "12.00"
+      }
+    ]
+  },
+  "deliveries": [
+    {
+      "delivery_number": "DN-900",
+      "purchase_order_number": "PO-778",
+      "lines": [
+        {
+          "line_id": "dn-1",
+          "item_code": "BRG-42",
+          "description": "Bearing 42 mm",
+          "quantity": "80",
+          "unit": "each",
+          "unit_price": "12.00"
+        }
+      ]
+    }
+  ]
+}
