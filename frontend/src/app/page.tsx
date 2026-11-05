@@ -44,21 +44,24 @@ type Result = {
 };
 
 type SampleData = {
-  invoice: {
-    invoice_number: string;
-    supplier_name: string;
-    purchase_order_number: string;
-    lines: Array<{
-      item_code: string;
-      description: string;
-      quantity: string;
-      unit: string;
-      unit_price: string;
-    }>;
-  };
   purchase_order: unknown;
   deliveries: unknown[];
 };
+
+const scenarios = [
+  {
+    id: "partial_delivery",
+    label: "Partial delivery and price mismatch",
+    documentPath: "/invoice_text.txt",
+    recordsPath: "/partial_delivery.json",
+  },
+  {
+    id: "missing_purchase_order",
+    label: "Invoice missing purchase order",
+    documentPath: "/missing_purchase_order.txt",
+    recordsPath: "/missing_purchase_order.json",
+  },
+];
 
 function EvidenceValue({ label, evidence }: { label: string; evidence: Evidence }) {
   return (
@@ -79,27 +82,21 @@ export default function Home() {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedScenario, setSelectedScenario] = useState(scenarios[0].id);
 
   async function runReview() {
     setLoading(true);
     setError("");
     setResult(null);
     try {
-      const sampleResponse = await fetch("/partial_delivery.json");
-      if (!sampleResponse.ok) throw new Error("Could not load the sample invoice data.");
+      const scenario = scenarios.find((item) => item.id === selectedScenario) ?? scenarios[0];
+      const [documentResponse, sampleResponse] = await Promise.all([
+        fetch(scenario.documentPath),
+        fetch(scenario.recordsPath),
+      ]);
+      if (!documentResponse.ok || !sampleResponse.ok) throw new Error("Could not load the selected demo files.");
+      const documentText = await documentResponse.text();
       const sample = (await sampleResponse.json()) as SampleData;
-      const documentText = [
-        `Supplier: ${sample.invoice.supplier_name}`,
-        `Invoice number: ${sample.invoice.invoice_number}`,
-        `Purchase order: ${sample.invoice.purchase_order_number}`,
-        ...sample.invoice.lines.flatMap((line, index) => [
-          `Line ${index + 1}`,
-          `Item code: ${line.item_code}`,
-          `Description: ${line.description}`,
-          `Quantity: ${line.quantity} ${line.unit}`,
-          `Unit price: EUR ${line.unit_price}`,
-        ]),
-      ].join("\n");
 
       let response: Response;
       try {
@@ -150,7 +147,7 @@ export default function Home() {
       <section className="main-area" id="queue">
         <header className="topbar"><div className="crumb">Operations <span>/</span> Review queue</div><div className="top-actions"><span className="live"><i /> Demo data</span><button className="icon-button" aria-label="Notifications">♧</button></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow">DEMO OPERATIONS</div><h1>Good morning, Fatemeh</h1><p>Three invoices need a closer look before they move to finance.</p></div><button className="primary-button" onClick={runReview} disabled={loading}>{loading ? "Extracting and checking…" : "↻  Run sample review"}</button></div>
+          <div className="page-heading"><div><div className="eyebrow">DEMO OPERATIONS</div><h1>Good morning, Fatemeh</h1><p>Three invoices need a closer look before they move to finance.</p></div><div className="page-actions"><label className="scenario-picker"><span>Try a scenario</span><select value={selectedScenario} onChange={(event) => { setSelectedScenario(event.target.value); setResult(null); setError(""); }} disabled={loading}>{scenarios.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.label}</option>)}</select></label><button className="primary-button" onClick={runReview} disabled={loading}>{loading ? "Extracting and checking…" : "↻  Run sample review"}</button></div></div>
 
           {error && <div role="alert" className="error-banner">{error}</div>}
 

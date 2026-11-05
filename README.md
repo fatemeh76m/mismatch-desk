@@ -45,7 +45,7 @@ To enable model-backed extraction, copy `.env.example` to `.env` in the project 
 
 Try `POST /api/invoices/extract` in the API docs using the contents of `examples/invoice_text.txt` as `document_text`. The response includes extracted values, exact source quotes, and whether a human should review the result. OpenRouter's structured output mode constrains model responses to a JSON schema, and the app then checks that each quote appears in the submitted text. [OpenRouter structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs)
 
-In a second terminal, run the UI with `cd frontend && npm install && npm run dev`, then open `http://localhost:3000`. It calls the API at `http://localhost:8000` by default; set `NEXT_PUBLIC_API_BASE_URL` if you run the API elsewhere.
+In a second terminal, run the UI with `cd frontend && npm install && npm run dev`, then open `http://localhost:3000`. It calls the API at `http://localhost:8000` by default; set `NEXT_PUBLIC_API_BASE_URL` if you run the API elsewhere. The dashboard lets you choose between a partial-delivery/price-mismatch invoice and an invoice with a missing purchase order number. Both send plain-text invoice files to the extraction endpoint; the purchase order and delivery records remain structured data.
 
 Try `POST /api/reconciliation` with [`examples/partial_delivery.json`](examples/partial_delivery.json). It should flag that the invoice bills 100 units while the delivery record contains 80, and that the invoice unit price differs from the order.
 
@@ -61,4 +61,4 @@ Try `POST /api/reconciliation` with [`examples/partial_delivery.json`](examples/
 
 ## Status
 
-Early development. The API now has a real OpenRouter-backed text extraction endpoint; the dashboard still uses the structured sample case for reconciliation.
+Early development. The API has an OpenRouter-backed text extraction endpoint, and the dashboard demonstrates both successful extraction followed by reconciliation and a missing-field case that stops for human review.

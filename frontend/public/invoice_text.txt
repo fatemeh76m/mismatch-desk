@@ -1,0 +1,12 @@
+TORINO COMPONENTS SRL
+Invoice number: INV-1042
+Invoice date: 4 November 2026
+Purchase order: PO-778
+
+Item code: BRG-42
+Description: Bearing 42mm
+Quantity: 100 each
+Unit price: EUR 12.50
+Line total: EUR 1,250.00
+
+Please remit payment according to the agreed terms.
