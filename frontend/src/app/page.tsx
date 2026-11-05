@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type Discrepancy = {
   code: string;
@@ -83,20 +83,51 @@ export default function Home() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedScenario, setSelectedScenario] = useState(scenarios[0].id);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeScenario = scenarios.find((item) => item.id === selectedScenario) ?? scenarios[0];
+
+  function clearSelectedFile() {
+    setSelectedFile(null);
+    setResult(null);
+    setError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   async function runReview() {
     setLoading(true);
     setError("");
     setResult(null);
     try {
-      const scenario = scenarios.find((item) => item.id === selectedScenario) ?? scenarios[0];
-      const [documentResponse, sampleResponse] = await Promise.all([
-        fetch(scenario.documentPath),
-        fetch(scenario.recordsPath),
-      ]);
-      if (!documentResponse.ok || !sampleResponse.ok) throw new Error("Could not load the selected demo files.");
-      const documentText = await documentResponse.text();
+      const sampleResponse = await fetch(activeScenario.recordsPath);
+      if (!sampleResponse.ok) throw new Error("Could not load the selected reference records.");
       const sample = (await sampleResponse.json()) as SampleData;
+      let documentText: string;
+
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        let pdfResponse: Response;
+        try {
+          pdfResponse = await fetch(`${apiBase}/api/invoices/extract-pdf`, {
+            method: "POST",
+            body: formData,
+          });
+        } catch {
+          throw new Error(`Could not reach the backend at ${apiBase}. Start FastAPI, then retry the PDF.`);
+        }
+        const pdfResult = (await pdfResponse.json().catch(() => null)) as
+          | { document_text?: string; detail?: string }
+          | null;
+        if (!pdfResponse.ok || !pdfResult?.document_text) {
+          throw new Error(pdfResult?.detail ?? `Could not read the PDF (HTTP ${pdfResponse.status}).`);
+        }
+        documentText = pdfResult.document_text;
+      } else {
+        const documentResponse = await fetch(activeScenario.documentPath);
+        if (!documentResponse.ok) throw new Error("Could not load the selected sample invoice text.");
+        documentText = await documentResponse.text();
+      }
 
       let response: Response;
       try {
@@ -147,7 +178,48 @@ export default function Home() {
       <section className="main-area" id="queue">
         <header className="topbar"><div className="crumb">Operations <span>/</span> Review queue</div><div className="top-actions"><span className="live"><i /> Demo data</span><button className="icon-button" aria-label="Notifications">♧</button></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow">DEMO OPERATIONS</div><h1>Good morning, Fatemeh</h1><p>Three invoices need a closer look before they move to finance.</p></div><div className="page-actions"><label className="scenario-picker"><span>Try a scenario</span><select value={selectedScenario} onChange={(event) => { setSelectedScenario(event.target.value); setResult(null); setError(""); }} disabled={loading}>{scenarios.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.label}</option>)}</select></label><button className="primary-button" onClick={runReview} disabled={loading}>{loading ? "Extracting and checking…" : "↻  Run sample review"}</button></div></div>
+          <div className="page-heading">
+            <div><div className="eyebrow">DEMO OPERATIONS</div><h1>Good morning, Fatemeh</h1><p>Three invoices need a closer look before they move to finance.</p></div>
+            <div className="page-actions">
+              <label className="scenario-picker">
+                <span>{selectedFile ? "Compare against" : "Try a scenario"}</span>
+                <select value={selectedScenario} onChange={(event) => { setSelectedScenario(event.target.value); setResult(null); setError(""); }} disabled={loading}>
+                  {scenarios.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.label}</option>)}
+                </select>
+              </label>
+              <label className="pdf-picker">
+                <span>Or upload a PDF</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  disabled={loading}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    if (file && file.size > 10 * 1024 * 1024) {
+                      setSelectedFile(null);
+                      setError("PDFs must be 10 MB or smaller.");
+                      event.target.value = "";
+                      return;
+                    }
+                    setSelectedFile(file);
+                    setResult(null);
+                    setError("");
+                  }}
+                />
+                <small>Text-based PDFs, up to 10 MB. Scanned PDFs need OCR.</small>
+              </label>
+              <button className="primary-button" onClick={runReview} disabled={loading}>{loading ? "Extracting and checking…" : selectedFile ? "↻  Extract & review PDF" : "↻  Extract & review sample"}</button>
+            </div>
+          </div>
+          <div className="document-source-note" aria-live="polite">
+            <span className="source-icon">▤</span>
+            <span className="source-copy">
+              <strong>{selectedFile ? `Invoice source: ${selectedFile.name}` : `Demo invoice text: ${activeScenario.documentPath.split("/").pop()}`}</strong>
+              <small>{selectedFile ? "This PDF will be converted to text, then extracted and checked against the selected reference records." : "This sample text file will be sent for AI extraction; the selected JSON file supplies purchase order and delivery records."}</small>
+            </span>
+            {selectedFile && <button type="button" className="source-remove" onClick={clearSelectedFile}>Use sample instead</button>}
+          </div>
 
           {error && <div role="alert" className="error-banner">{error}</div>}
 

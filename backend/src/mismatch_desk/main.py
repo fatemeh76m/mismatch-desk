@@ -1,4 +1,6 @@
-from fastapi import Depends, FastAPI, HTTPException
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
@@ -11,10 +13,11 @@ from .models import (
     InvoiceTextRequest,
     DocumentLine,
     Invoice,
-    ReconciliationRequest,
+    PdfTextResponse,
     ReconciliationRequest,
     ReconciliationResult,
 )
+from .pdf_extraction import PdfTextExtractionError, extract_pdf_text
 from .workflow import reconciliation_graph
 
 app = FastAPI(
@@ -28,6 +31,8 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+MAX_PDF_BYTES = 10 * 1024 * 1024
 
 
 def get_invoice_extractor() -> OpenRouterInvoiceExtractor:
@@ -72,6 +77,33 @@ async def extract_invoice_text(request: InvoiceTextRequest) -> InvoiceExtraction
     except ExtractionProviderError as error:
         status_code = 503 if "not configured" in str(error) else 502
         raise HTTPException(status_code=status_code, detail=str(error)) from error
+
+
+@app.post("/api/invoices/extract-pdf", response_model=PdfTextResponse)
+async def extract_invoice_pdf(file: Annotated[UploadFile, File()]) -> PdfTextResponse:
+    filename = file.filename or "uploaded-file"
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=415, detail="Upload a PDF file.")
+
+    try:
+        pdf_bytes = await file.read(MAX_PDF_BYTES + 1)
+    finally:
+        await file.close()
+    if len(pdf_bytes) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="The PDF exceeds the 10 MB upload limit.")
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise HTTPException(status_code=415, detail="The uploaded file is not a valid PDF.")
+
+    try:
+        document_text, page_count = extract_pdf_text(pdf_bytes)
+    except PdfTextExtractionError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    return PdfTextResponse(
+        filename=filename,
+        page_count=page_count,
+        document_text=document_text,
+    )
 
 
 @app.post(

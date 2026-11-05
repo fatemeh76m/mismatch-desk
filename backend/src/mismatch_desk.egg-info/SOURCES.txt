@@ -4,6 +4,7 @@ src/mismatch_desk/config.py
 src/mismatch_desk/extraction.py
 src/mismatch_desk/main.py
 src/mismatch_desk/models.py
+src/mismatch_desk/pdf_extraction.py
 src/mismatch_desk/reconciliation.py
 src/mismatch_desk/workflow.py
 src/mismatch_desk.egg-info/PKG-INFO
@@ -12,4 +13,5 @@ src/mismatch_desk.egg-info/dependency_links.txt
 src/mismatch_desk.egg-info/requires.txt
 src/mismatch_desk.egg-info/top_level.txt
 tests/test_extraction.py
+tests/test_invoice_text_reconciliation.py
 tests/test_reconciliation.py

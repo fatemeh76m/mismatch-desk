@@ -52,6 +52,12 @@ class InvoiceTextRequest(BaseModel):
     document_text: str = Field(min_length=1, max_length=30000)
 
 
+class PdfTextResponse(BaseModel):
+    filename: str
+    page_count: int
+    document_text: str
+
+
 class InvoiceExtractionResponse(BaseModel):
     extracted_invoice: ExtractedInvoice
     review_required: bool

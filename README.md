@@ -43,9 +43,13 @@ Open `http://127.0.0.1:8000/docs`. Reconciliation accepts structured JSON; PDF e
 
 To enable model-backed extraction, copy `.env.example` to `.env` in the project root and set `OPENROUTER_API_KEY` to your key. Never commit `.env` or put the key in frontend code. `OPENROUTER_MODEL` defaults to `openai/gpt-4o-mini`; change it to a model in your OpenRouter account that supports structured outputs. The sample document contains synthetic data. Model requests use OpenRouter credits.
 
+After pulling a change that adds backend dependencies, activate the backend virtual environment and run `pip install -e '.[dev]'` again. The PDF upload uses `pypdf` to read selectable text from PDFs up to 10 MB and 20 pages. Scanned, password-protected, or overly long PDFs are returned for manual review; OCR is not implemented yet. Uploaded files are processed in memory and are not saved by the app.
+
 Try `POST /api/invoices/extract` in the API docs using the contents of `examples/invoice_text.txt` as `document_text`. The response includes extracted values, exact source quotes, and whether a human should review the result. OpenRouter's structured output mode constrains model responses to a JSON schema, and the app then checks that each quote appears in the submitted text. [OpenRouter structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs)
 
 In a second terminal, run the UI with `cd frontend && npm install && npm run dev`, then open `http://localhost:3000`. It calls the API at `http://localhost:8000` by default; set `NEXT_PUBLIC_API_BASE_URL` if you run the API elsewhere. The dashboard lets you choose between a partial-delivery/price-mismatch invoice and an invoice with a missing purchase order number. Both send plain-text invoice files to the extraction endpoint; the purchase order and delivery records remain structured data.
+
+The dashboard also accepts a PDF upload. Select the purchase-order/delivery reference scenario, choose a text-based PDF, and run the review. To try the sample invoice locally, open `examples/invoice_text.txt` in TextEdit and use **File → Print → PDF → Save as PDF**; then upload the generated PDF. The sample references use PO-778, so keep the first scenario selected.
 
 Try `POST /api/reconciliation` with [`examples/partial_delivery.json`](examples/partial_delivery.json). It should flag that the invoice bills 100 units while the delivery record contains 80, and that the invoice unit price differs from the order.
 
@@ -61,4 +65,4 @@ Try `POST /api/reconciliation` with [`examples/partial_delivery.json`](examples/
 
 ## Status
 
-Early development. The API has an OpenRouter-backed text extraction endpoint, and the dashboard demonstrates both successful extraction followed by reconciliation and a missing-field case that stops for human review.
+Early development. The API has OpenRouter-backed text extraction and selectable-text PDF ingestion. The dashboard demonstrates successful extraction followed by reconciliation, a missing-field case that stops for human review, and PDF upload using the selected purchase-order/delivery reference data.
