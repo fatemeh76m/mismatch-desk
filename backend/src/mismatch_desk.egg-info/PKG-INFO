@@ -3,6 +3,7 @@ Name: mismatch-desk
 Version: 0.1.0
 Summary: AI-assisted invoice discrepancy review workflow
 Requires-Python: >=3.11
+Requires-Dist: alembic<2.0,>=1.16
 Requires-Dist: fastapi<1.0,>=0.115
 Requires-Dist: httpx<1.0,>=0.27
 Requires-Dist: langgraph<2.0,>=0.2
@@ -10,6 +11,8 @@ Requires-Dist: pypdf<7.0,>=5.0
 Requires-Dist: pydantic<3.0,>=2.9
 Requires-Dist: python-multipart<1.0,>=0.0.9
 Requires-Dist: python-dotenv<2.0,>=1.0
+Requires-Dist: psycopg[binary]<4.0,>=3.2
+Requires-Dist: sqlalchemy<3.0,>=2.0
 Requires-Dist: uvicorn[standard]<1.0,>=0.30
 Provides-Extra: dev
 Requires-Dist: pytest<9.0,>=8.3; extra == "dev"

@@ -1,8 +1,11 @@
+import asyncio
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 
 from .extraction import ExtractionProviderError, OpenRouterInvoiceExtractor
 from .models import (
@@ -16,8 +19,11 @@ from .models import (
     PdfTextResponse,
     ReconciliationRequest,
     ReconciliationResult,
+    ReviewCaseResponse,
+    ReviewDecisionRequest,
 )
 from .pdf_extraction import PdfTextExtractionError, extract_pdf_text
+from .review_store import create_review_case, get_review_case, record_review_decision
 from .workflow import reconciliation_graph
 
 app = FastAPI(
@@ -120,7 +126,8 @@ async def reconcile_invoice_text(
         raise HTTPException(status_code=502, detail=str(error)) from error
 
     if extraction.review_required:
-        return InvoiceTextReconciliationResponse(extraction=extraction)
+        case_id = await _persist_review_case(extraction, None)
+        return InvoiceTextReconciliationResponse(extraction=extraction, case_id=case_id)
 
     extracted = extraction.extracted_invoice
     try:
@@ -149,7 +156,8 @@ async def reconcile_invoice_text(
                 "Extracted values cannot be represented by the supported invoice fields.",
             ],
         )
-        return InvoiceTextReconciliationResponse(extraction=extraction)
+        case_id = await _persist_review_case(extraction, None)
+        return InvoiceTextReconciliationResponse(extraction=extraction, case_id=case_id)
 
     reconciliation = _run_reconciliation(
         ReconciliationRequest(
@@ -158,10 +166,53 @@ async def reconcile_invoice_text(
             deliveries=request.deliveries,
         )
     )
+    case_id = await _persist_review_case(extraction, reconciliation)
     return InvoiceTextReconciliationResponse(
         extraction=extraction,
         reconciliation=reconciliation,
+        case_id=case_id,
     )
+
+
+async def _persist_review_case(
+    extraction: InvoiceExtractionResponse,
+    reconciliation: ReconciliationResult | None,
+) -> UUID:
+    try:
+        return await asyncio.to_thread(create_review_case, extraction, reconciliation)
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="The review database is unavailable. Start PostgreSQL and retry the review.",
+        ) from error
+
+
+@app.get("/api/review-cases/{case_id}", response_model=ReviewCaseResponse)
+def read_review_case(case_id: UUID) -> ReviewCaseResponse:
+    try:
+        case = get_review_case(case_id)
+    except SQLAlchemyError as error:
+        raise HTTPException(status_code=503, detail="The review database is unavailable.") from error
+    if case is None:
+        raise HTTPException(status_code=404, detail="Review case not found.")
+    return case
+
+
+@app.post(
+    "/api/review-cases/{case_id}/decisions",
+    response_model=ReviewCaseResponse,
+)
+def add_review_decision(
+    case_id: UUID,
+    request: ReviewDecisionRequest,
+) -> ReviewCaseResponse:
+    try:
+        case = record_review_decision(case_id, request)
+    except SQLAlchemyError as error:
+        raise HTTPException(status_code=503, detail="The review database is unavailable.") from error
+    if case is None:
+        raise HTTPException(status_code=404, detail="Review case not found.")
+    return case
 
 
 @app.post("/api/reconciliation", response_model=ReconciliationResult)

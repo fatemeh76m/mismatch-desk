@@ -1,8 +1,10 @@
+from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EvidenceField(BaseModel):
@@ -133,4 +135,36 @@ class ReconciliationResult(BaseModel):
 class InvoiceTextReconciliationResponse(BaseModel):
     extraction: InvoiceExtractionResponse
     reconciliation: ReconciliationResult | None = None
+    case_id: UUID | None = None
+
+
+class ReviewDecisionRequest(BaseModel):
+    decision: Literal["request_supplier_correction", "accept_exception", "keep_on_hold"]
+    reason: str = Field(min_length=5, max_length=1000)
+    reviewer_name: str = Field(min_length=2, max_length=120)
+
+    @field_validator("reason", "reviewer_name", mode="before")
+    @classmethod
+    def strip_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+
+class ReviewDecisionRecord(BaseModel):
+    id: UUID
+    decision: Literal["request_supplier_correction", "accept_exception", "keep_on_hold"]
+    reason: str
+    reviewer_name: str
+    created_at: datetime
+
+
+class ReviewCaseResponse(BaseModel):
+    id: UUID
+    invoice_number: str | None
+    supplier_name: str | None
+    purchase_order_number: str | None
+    status: str
+    created_at: datetime
+    extraction: InvoiceExtractionResponse
+    reconciliation: ReconciliationResult | None
+    decisions: list[ReviewDecisionRecord]
 

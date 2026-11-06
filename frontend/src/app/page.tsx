@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 type Discrepancy = {
   code: string;
@@ -41,6 +41,35 @@ type Result = {
     matched_line_count: number;
     discrepancies: Discrepancy[];
   } | null;
+  case_id: string | null;
+};
+
+type DecisionValue = "request_supplier_correction" | "accept_exception" | "keep_on_hold";
+
+type ReviewDecisionRecord = {
+  id: string;
+  decision: DecisionValue;
+  reason: string;
+  reviewer_name: string;
+  created_at: string;
+};
+
+type ReviewCase = {
+  id: string;
+  invoice_number: string | null;
+  supplier_name: string | null;
+  purchase_order_number: string | null;
+  status: string;
+  created_at: string;
+  extraction: Result["extraction"];
+  reconciliation: Result["reconciliation"];
+  decisions: ReviewDecisionRecord[];
+};
+
+const decisionLabels: Record<DecisionValue, string> = {
+  request_supplier_correction: "Request supplier correction",
+  accept_exception: "Accept exception",
+  keep_on_hold: "Keep on hold",
 };
 
 type SampleData = {
@@ -86,10 +115,19 @@ export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeScenario = scenarios.find((item) => item.id === selectedScenario) ?? scenarios[0];
+  const [reviewCase, setReviewCase] = useState<ReviewCase | null>(null);
+  const [reviewerName, setReviewerName] = useState("Demo reviewer");
+  const [decision, setDecision] = useState<DecisionValue>("request_supplier_correction");
+  const [decisionReason, setDecisionReason] = useState("");
+  const [savingDecision, setSavingDecision] = useState(false);
+  const [decisionError, setDecisionError] = useState("");
 
   function clearSelectedFile() {
     setSelectedFile(null);
     setResult(null);
+    setReviewCase(null);
+    setDecisionReason("");
+    setDecisionError("");
     setError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -98,6 +136,9 @@ export default function Home() {
     setLoading(true);
     setError("");
     setResult(null);
+    setReviewCase(null);
+    setDecisionReason("");
+    setDecisionError("");
     try {
       const sampleResponse = await fetch(activeScenario.recordsPath);
       if (!sampleResponse.ok) throw new Error("Could not load the selected reference records.");
@@ -151,11 +192,42 @@ export default function Home() {
           `Invoice extraction failed: ${failure?.detail ?? `HTTP ${response.status}`}. Check the backend and OpenRouter configuration.`,
         );
       }
-      setResult((await response.json()) as Result);
+      const reviewResult = (await response.json()) as Result;
+      setResult(reviewResult);
+      setDecision(reviewResult.extraction.review_required ? "keep_on_hold" : "request_supplier_correction");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The sample review could not be completed.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function recordDecision(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!result?.case_id) return;
+
+    setSavingDecision(true);
+    setDecisionError("");
+    try {
+      const response = await fetch(`${apiBase}/api/review-cases/${result.case_id}/decisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision,
+          reason: decisionReason,
+          reviewer_name: reviewerName,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as ReviewCase | { detail?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload && "detail" in payload ? payload.detail : `Could not save decision (HTTP ${response.status}).`);
+      }
+      setReviewCase(payload as ReviewCase);
+      setDecisionReason("");
+    } catch (caught) {
+      setDecisionError(caught instanceof Error ? caught.message : "Could not save the review decision.");
+    } finally {
+      setSavingDecision(false);
     }
   }
 
@@ -183,7 +255,7 @@ export default function Home() {
             <div className="page-actions">
               <label className="scenario-picker">
                 <span>{selectedFile ? "Compare against" : "Try a scenario"}</span>
-                <select value={selectedScenario} onChange={(event) => { setSelectedScenario(event.target.value); setResult(null); setError(""); }} disabled={loading}>
+                <select value={selectedScenario} onChange={(event) => { setSelectedScenario(event.target.value); setResult(null); setReviewCase(null); setDecisionReason(""); setDecisionError(""); setError(""); }} disabled={loading}>
                   {scenarios.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.label}</option>)}
                 </select>
               </label>
@@ -198,12 +270,19 @@ export default function Home() {
                     const file = event.target.files?.[0] ?? null;
                     if (file && file.size > 10 * 1024 * 1024) {
                       setSelectedFile(null);
+                      setResult(null);
+                      setReviewCase(null);
+                      setDecisionReason("");
+                      setDecisionError("");
                       setError("PDFs must be 10 MB or smaller.");
                       event.target.value = "";
                       return;
                     }
                     setSelectedFile(file);
                     setResult(null);
+                    setReviewCase(null);
+                    setDecisionReason("");
+                    setDecisionError("");
                     setError("");
                   }}
                 />
@@ -227,7 +306,7 @@ export default function Home() {
             <section className={`review-outcome ${result.extraction.review_required ? "needs-human" : ""}`} aria-live="polite">
               <div className="outcome-heading">
                 <div>
-                  <span className="eyebrow">SAMPLE REVIEW RESULT</span>
+                  <span className="eyebrow">{selectedFile ? "PDF REVIEW RESULT" : "SAMPLE REVIEW RESULT"}</span>
                   <h2>{result.extraction.review_required ? "Human review required" : `Reconciliation: ${reconciliation?.status ?? "not run"}`}</h2>
                 </div>
                 <span className={`outcome-pill ${result.extraction.review_required ? "review" : "complete"}`}>
@@ -291,6 +370,51 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+              )}
+
+              {result.case_id && (result.extraction.review_required || (reconciliation?.discrepancies.length ?? 0) > 0) && (
+                <section className="human-decision-panel">
+                  <div className="decision-heading">
+                    <div>
+                      <h3>Record human review decision</h3>
+                      <p>This records a reviewer’s outcome only. It does not contact the supplier or approve or trigger payment.</p>
+                    </div>
+                    <span className="case-reference">Case {result.case_id}</span>
+                  </div>
+                  <form className="decision-form" onSubmit={recordDecision}>
+                    <label>
+                      Decision
+                      <select value={decision} onChange={(event) => setDecision(event.target.value as DecisionValue)} disabled={savingDecision}>
+                        {Object.entries(decisionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      Reviewer name <span className="field-hint">(demo identity; sign-in is not implemented)</span>
+                      <input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} minLength={2} maxLength={120} required disabled={savingDecision} />
+                    </label>
+                    <label className="reason-field">
+                      Reason
+                      <textarea value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} minLength={5} maxLength={1000} required rows={3} placeholder="Explain why you chose this outcome." disabled={savingDecision} />
+                    </label>
+                    {decisionError && <p className="decision-error" role="alert">{decisionError}</p>}
+                    <button className="primary-button" type="submit" disabled={savingDecision}>{savingDecision ? "Saving decision…" : "Record decision"}</button>
+                  </form>
+
+                  {reviewCase && reviewCase.decisions.length > 0 && (
+                    <div className="decision-history">
+                      <h4>Decision history</h4>
+                      <ol>
+                        {reviewCase.decisions.map((entry) => (
+                          <li key={entry.id}>
+                            <div><strong>{decisionLabels[entry.decision]}</strong><time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString()}</time></div>
+                            <p>{entry.reason}</p>
+                            <small>Recorded by {entry.reviewer_name}</small>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </section>
               )}
             </section>
           )}

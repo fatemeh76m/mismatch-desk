@@ -11,4 +11,4 @@
 ## Commands
 - Backend setup: `cd backend && python -m venv .venv && source .venv/bin/activate && pip install -e '.[dev]'`
 - Run API: `cd backend && uvicorn mismatch_desk.main:app --reload`
-- Run checks: `cd backend && pytest`
+- Run checks: `docker compose up -d db && cd backend && alembic upgrade head && pytest`
